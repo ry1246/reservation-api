@@ -1,0 +1,11 @@
+pgdata/
+.env
+reservation-api
+*.test
+*.out
+.DS_Store
+
+# Dev
+CLAUDE.md
+task.md
+
