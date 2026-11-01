@@ -1,6 +1,7 @@
 package main
 
 import (
+    "context"
     "encoding/json"
     "log"
     "net/http"
@@ -12,8 +13,15 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-    mux := http.NewServeMux()
+    ctx := context.Background()
 
+    pool, err := newPool(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer pool.Close()
+
+    mux := http.NewServeMux()
     mux.HandleFunc("GET /health", healthHandler)
 
     log.Println("listening on :8080")
