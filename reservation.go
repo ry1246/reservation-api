@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+    "strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -87,4 +88,32 @@ func (s *server) createReservation(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(rsv); err != nil {
 		log.Printf("encode reservation: %v", err)
 	}
+}
+
+func (s *server) cancelReservation(w http.ResponseWriter, r *http.Request) {
+    // 1. パスの {id} を int64 に変換
+    id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+    if err != nil || id <= 0 {
+        http.Error(w, "invalid reservation id", http.StatusBadRequest)
+        return
+    }
+
+    // 2. DELETE を実行
+    tag, err := s.pool.Exec(r.Context(),
+        "DELETE FROM reservations WHERE id = $1", id,
+    )
+    if err != nil {
+        log.Printf("delete reservation: %v", err)
+        http.Error(w, "internal server error", http.StatusInternalServerError)
+        return
+    }
+
+    // 3. 消えた行がなければ 404
+    if tag.RowsAffected() == 0 {
+        http.Error(w, "reservation not found", http.StatusNotFound)
+        return
+    }
+
+    // 4. 成功は 204 No Content
+    w.WriteHeader(http.StatusNoContent)
 }

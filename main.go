@@ -34,6 +34,7 @@ func main() {
 	mux.HandleFunc("POST /events", s.createEvent)
 	mux.HandleFunc("GET /events/{id}/seats", s.listSeats)
 	mux.HandleFunc("POST /reservations", s.createReservation)
+    mux.HandleFunc("DELETE /reservations/{id}", s.cancelReservation)
 
 	log.Println("listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", mux))
