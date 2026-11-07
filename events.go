@@ -18,7 +18,7 @@ func (s *server) listEvents(w http.ResponseWriter, r *http.Request) {
 		"SELECT id, name, starts_at FROM events ORDER BY starts_at")
 	if err != nil {
 		log.Printf("query events: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	defer rows.Close()
@@ -28,21 +28,18 @@ func (s *server) listEvents(w http.ResponseWriter, r *http.Request) {
 		var e Event
 		if err := rows.Scan(&e.ID, &e.Name, &e.StartsAt); err != nil {
 			log.Printf("scan event: %v", err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
 		events = append(events, e)
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("iterate events: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(events); err != nil {
-		log.Printf("encode events: %v", err)
-	}
+	writeJSON(w, http.StatusOK, events)
 }
 
 type createEventRequest struct {
@@ -55,13 +52,13 @@ func (s *server) createEvent(w http.ResponseWriter, r *http.Request) {
 	// 1. JSON をデコード 壊れたJSONは400
 	var req createEventRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid json", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
 
 	// 2. 最低限のチェック
 	if req.Name == "" || req.StartsAt.IsZero() || req.SeatCount <= 0 || req.SeatCount > 10000 {
-		http.Error(w, "name, starts_at, seat_count(1-10000) are required", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "name, starts_at, seat_count(1-10000) are required")
 		return
 	}
 
@@ -71,7 +68,7 @@ func (s *server) createEvent(w http.ResponseWriter, r *http.Request) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		log.Printf("begin tx: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	defer tx.Rollback(ctx)
@@ -85,7 +82,7 @@ func (s *server) createEvent(w http.ResponseWriter, r *http.Request) {
 	).Scan(&e.ID, &e.Name, &e.StartsAt)
 	if err != nil {
 		log.Printf("insert event: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -97,21 +94,17 @@ func (s *server) createEvent(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		log.Printf("insert seats: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
 	// 6. コミット
 	if err := tx.Commit(ctx); err != nil {
 		log.Printf("commit: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	// 7. 201 で返す(Header => WriteHeader => Encode の順)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(e); err != nil {
-		log.Printf("encode event: %v", err)
-	}
+	// 7. 201 で返す
+	writeJSON(w, http.StatusCreated, e)
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
@@ -15,8 +14,8 @@ type Seat struct {
 
 func (s *server) listSeats(w http.ResponseWriter, r *http.Request) {
 	eventID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid event id", http.StatusBadRequest)
+	if err != nil || eventID <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid event id")
 		return
 	}
 
@@ -30,7 +29,7 @@ func (s *server) listSeats(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		log.Printf("query seats: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	defer rows.Close()
@@ -40,19 +39,16 @@ func (s *server) listSeats(w http.ResponseWriter, r *http.Request) {
 		var st Seat
 		if err := rows.Scan(&st.ID, &st.Label, &st.Reserved); err != nil {
 			log.Printf("scan seat: %v", err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
 		seats = append(seats, st)
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("iterate seats: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(seats); err != nil {
-		log.Printf("encode seats: %v", err)
-	}
+	writeJSON(w, http.StatusOK, seats)
 }

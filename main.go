@@ -2,15 +2,14 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"net/http"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 type server struct {
@@ -34,7 +33,7 @@ func main() {
 	mux.HandleFunc("POST /events", s.createEvent)
 	mux.HandleFunc("GET /events/{id}/seats", s.listSeats)
 	mux.HandleFunc("POST /reservations", s.createReservation)
-    mux.HandleFunc("DELETE /reservations/{id}", s.cancelReservation)
+	mux.HandleFunc("DELETE /reservations/{id}", s.cancelReservation)
 
 	log.Println("listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", mux))
