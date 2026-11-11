@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Reservation struct {
@@ -77,7 +78,12 @@ func (s *server) createReservation(w http.ResponseWriter, r *http.Request) {
 		req.SeatID, req.UserName,
 	).Scan(&rsv.ID, &rsv.SeatID, &rsv.UserName, &rsv.CreatedAt)
 	if err != nil {
-		log.Printf("insert reservation: %v", err)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			writeError(w, http.StatusConflict, "seat already reserved")
+			return
+		}
+		log.Printf("insert reservations: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
