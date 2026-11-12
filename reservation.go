@@ -40,24 +40,33 @@ func (s *server) createReservation(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// 3. 座席が存在するか確認
+	// 3. トランザクション開始
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		log.Printf("begin tx: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// 4. 座席の行をロックしつつ、存在確認
 	var one int
-	err := s.pool.QueryRow(ctx,
-		"SELECT 1 FROM seats WHERE id = $1", req.SeatID,
+	err = tx.QueryRow(ctx,
+		"SELECT 1 FROM seats WHERE id = $1 FOR UPDATE", req.SeatID,
 	).Scan(&one)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "seat not found")
 		return
 	}
 	if err != nil {
-		log.Printf("check seat: %v", err)
+		log.Printf("lock seat: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	// 4. すでに予約があるか確認
+	// 5. すでに予約があるか確認
 	var reserved bool
-	err = s.pool.QueryRow(ctx,
+	err = tx.QueryRow(ctx,
 		"SELECT EXISTS (SELECT 1 FROM reservations WHERE seat_id = $1)", req.SeatID,
 	).Scan(&reserved)
 	if err != nil {
@@ -70,9 +79,9 @@ func (s *server) createReservation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. reservations に INSERT して、採番された行を受け取る
+	// 6. reservations に INSERT して、採番された行を受け取る
 	var rsv Reservation
-	err = s.pool.QueryRow(ctx,
+	err = tx.QueryRow(ctx,
 		`INSERT INTO reservations (seat_id, user_name) VALUES ($1, $2)
              RETURNING id, seat_id, user_name, created_at`,
 		req.SeatID, req.UserName,
@@ -88,7 +97,14 @@ func (s *server) createReservation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 6. 201 で返す
+	// 7. コミットしてロックを解放
+	if err := tx.Commit(ctx); err != nil {
+		log.Printf("commit: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	// 8. 201 で返す
 	writeJSON(w, http.StatusCreated, rsv)
 }
 
