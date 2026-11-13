@@ -1,0 +1,1 @@
+ALTER TABLE seats DROP COLUMN version;
