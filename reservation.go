@@ -50,16 +50,16 @@ func (s *server) createReservation(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(ctx)
 
 	// 4. 座席の行をロックしつつ、存在確認
-	var one int
+	var version int
 	err = tx.QueryRow(ctx,
-		"SELECT 1 FROM seats WHERE id = $1 FOR UPDATE", req.SeatID,
-	).Scan(&one)
+		"SELECT version FROM seats WHERE id = $1", req.SeatID,
+	).Scan(&version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "seat not found")
 		return
 	}
 	if err != nil {
-		log.Printf("lock seat: %v", err)
+		log.Printf("read seat version: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -76,6 +76,21 @@ func (s *server) createReservation(w http.ResponseWriter, r *http.Request) {
 	}
 	if reserved {
 		writeError(w, http.StatusConflict, "seat already reserved")
+		return
+	}
+
+	// 5.5 楽観ロック：読んだ version のままなら version を進める
+	tag, err := tx.Exec(ctx,
+		"UPDATE seats SET version = version + 1 WHERE id = $1 AND version = $2",
+		req.SeatID, version,
+	)
+	if err != nil {
+		log.Printf("update seat version: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		writeError(w, http.StatusConflict, "seat was modified concurrently")
 		return
 	}
 
