@@ -1,8 +1,11 @@
 package main
 
 import (
+    "crypto/sha256"
+    "encoding/hex"
 	"encoding/json"
 	"errors"
+    "fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -39,6 +42,15 @@ func (s *server) createReservation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
+
+    // 2.5 冪等性キーを読む
+    idemKey := r.Header.Get("Idempotency-Key")
+    if len(idemKey) > maxIdempotencyKeyLen {
+        writeError(w, http.StatusBadRequest, "Idempotency-Key is too long")
+        return
+    }
+    reqHash := requestHash(req)
+    log.Printf("idempotency key=%q hash=%s", idemKey, reqHash)
 
 	// 3. トランザクション開始
 	tx, err := s.pool.Begin(ctx)
@@ -149,4 +161,11 @@ func (s *server) cancelReservation(w http.ResponseWriter, r *http.Request) {
 
 	// 4. 成功は 204 No Content
 	w.WriteHeader(http.StatusNoContent)
+}
+
+const maxIdempotencyKeyLen = 255
+
+func requestHash(req createReservationRequest) string {
+    sum := sha256.Sum256([]byte(fmt.Sprintf("%d:%s", req.SeatID, req.UserName)))
+    return hex.EncodeToString(sum[:])
 }
