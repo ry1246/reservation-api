@@ -1,11 +1,11 @@
 package main
 
 import (
-    "crypto/sha256"
-    "encoding/hex"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
-    "fmt"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -43,14 +43,13 @@ func (s *server) createReservation(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-    // 2.5 冪等性キーを読む
-    idemKey := r.Header.Get("Idempotency-Key")
-    if len(idemKey) > maxIdempotencyKeyLen {
-        writeError(w, http.StatusBadRequest, "Idempotency-Key is too long")
-        return
-    }
-    reqHash := requestHash(req)
-    log.Printf("idempotency key=%q hash=%s", idemKey, reqHash)
+	// 2.5 冪等性キーを読む
+	idemKey := r.Header.Get("Idempotency-Key")
+	if len(idemKey) > maxIdempotencyKeyLen {
+		writeError(w, http.StatusBadRequest, "Idempotency-Key is too long")
+		return
+	}
+	reqHash := requestHash(req)
 
 	// 3. トランザクション開始
 	tx, err := s.pool.Begin(ctx)
@@ -61,7 +60,47 @@ func (s *server) createReservation(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 
-	// 4. 座席の行をロックしつつ、存在確認
+	// 3.5 冪等性キーの確保
+	if idemKey != "" {
+		claimed, err := tx.Exec(ctx,
+			`INSERT INTO idempotency_keys (key, request_hash) VALUES ($1, $2)
+             ON CONFLICT (key) DO NOTHING`,
+			idemKey, reqHash,
+		)
+		if err != nil {
+			log.Printf("claim idempotency key: %v", err)
+			writeError(w, http.StatusInternalServerError, "internal server error")
+			return
+		}
+		if claimed.RowsAffected() == 0 {
+			var (
+				savedHash   string
+				savedStatus int
+				savedBody   []byte
+			)
+			err = tx.QueryRow(ctx,
+				`SELECT request_hash, status_code, reponse_body
+                        FROM idempotency_keys WHERE key = $1`,
+				idemKey,
+			).Scan(&savedHash, &savedStatus, &savedBody)
+			if err != nil {
+				log.Printf("read idempotency key: %v", err)
+				writeError(w, http.StatusInternalServerError, "internal server error")
+				return
+			}
+			if savedHash != reqHash {
+				writeError(w, http.StatusUnprocessableEntity, "Idempotency-Key was already used with a different request")
+				return
+			}
+			w.Header().Set("Content-Type", "applicaton/json")
+			w.Header().Set("Idempotent-Replayed", "true")
+			w.WriteHeader(savedStatus)
+			w.Write(savedBody)
+			return
+		}
+	}
+
+	// 4. 座席の version を読む
 	var version int
 	err = tx.QueryRow(ctx,
 		"SELECT version FROM seats WHERE id = $1", req.SeatID,
@@ -124,6 +163,26 @@ func (s *server) createReservation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 6.5 冪等性キーに結果を保存
+	if idemKey != "" {
+		body, err := json.Marshal(rsv)
+		if err != nil {
+			log.Printf("marshal reservation: %v", err)
+			writeError(w, http.StatusInternalServerError, "internal server error")
+			return
+		}
+		_, err = tx.Exec(ctx,
+			`UPDATE idempotency_keys SET status_code = $1, response_body = $2
+                 WHERE key = $3`,
+			http.StatusCreated, body, idemKey,
+		)
+		if err != nil {
+			log.Printf("save idempotency result: %v", err)
+			writeError(w, http.StatusInternalServerError, "internal server error")
+			return
+		}
+	}
+
 	// 7. コミットしてロックを解放
 	if err := tx.Commit(ctx); err != nil {
 		log.Printf("commit: %v", err)
@@ -166,6 +225,6 @@ func (s *server) cancelReservation(w http.ResponseWriter, r *http.Request) {
 const maxIdempotencyKeyLen = 255
 
 func requestHash(req createReservationRequest) string {
-    sum := sha256.Sum256([]byte(fmt.Sprintf("%d:%s", req.SeatID, req.UserName)))
-    return hex.EncodeToString(sum[:])
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%d:%s", req.SeatID, req.UserName)))
+	return hex.EncodeToString(sum[:])
 }
