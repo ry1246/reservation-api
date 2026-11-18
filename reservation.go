@@ -79,7 +79,7 @@ func (s *server) createReservation(w http.ResponseWriter, r *http.Request) {
 				savedBody   []byte
 			)
 			err = tx.QueryRow(ctx,
-				`SELECT request_hash, status_code, reponse_body
+				`SELECT request_hash, status_code, response_body
                         FROM idempotency_keys WHERE key = $1`,
 				idemKey,
 			).Scan(&savedHash, &savedStatus, &savedBody)
@@ -92,8 +92,8 @@ func (s *server) createReservation(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusUnprocessableEntity, "Idempotency-Key was already used with a different request")
 				return
 			}
-			w.Header().Set("Content-Type", "applicaton/json")
-			w.Header().Set("Idempotent-Replayed", "true")
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Idempotency-Replayed", "true")
 			w.WriteHeader(savedStatus)
 			w.Write(savedBody)
 			return
