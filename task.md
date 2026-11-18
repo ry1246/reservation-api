@@ -44,7 +44,7 @@
 - [x] 対策C: 楽観ロック（version カラム）
 - [x] A/B/C を同じ負荷テストで比較し、結果（成功数・所要時間）を記録
 - [x] トランザクション分離レベルの挙動を実験で確認（READ COMMITTED と SERIALIZABLE）
-- [ ] 冪等性キー（`Idempotency-Key` ヘッダ）で二重送信を防ぐ
+- [x] 冪等性キー（`Idempotency-Key` ヘッダ）で二重送信を防ぐ
 
 ## Phase 3: 仕上げ
 
