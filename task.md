@@ -32,7 +32,7 @@
 - [x] `POST /reservations` 予約作成（この時点では素朴な実装）
 - [x] `DELETE /reservations/{id}` 予約キャンセル
 - [x] 入力バリデーションとエラーレスポンスの統一（JSON、ステータスコード）
-- [ ] ハンドラの基本テスト（`go test`、`httptest`）
+- [x] ハンドラの基本テスト（`go test`、`httptest`）
 
 ## Phase 2: 二重予約を再現して潰す（本題）
 
