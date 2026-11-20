@@ -20,6 +20,7 @@ type Reservation struct {
 	SeatID    int64     `json:"seat_id"`
 	UserName  string    `json:"user_name"`
 	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 type createReservationRequest struct {
@@ -147,11 +148,12 @@ func (s *server) createReservation(w http.ResponseWriter, r *http.Request) {
 
 	// 6. reservations に INSERT して、採番された行を受け取る
 	var rsv Reservation
+	expiresAt := time.Now().Add(reservationTTL)
 	err = tx.QueryRow(ctx,
-		`INSERT INTO reservations (seat_id, user_name) VALUES ($1, $2)
-             RETURNING id, seat_id, user_name, created_at`,
-		req.SeatID, req.UserName,
-	).Scan(&rsv.ID, &rsv.SeatID, &rsv.UserName, &rsv.CreatedAt)
+		`INSERT INTO reservations (seat_id, user_name, expires_at) VALUES ($1, $2, $3)
+             RETURNING id, seat_id, user_name, created_at, expires_at`,
+		req.SeatID, req.UserName, expiresAt,
+	).Scan(&rsv.ID, &rsv.SeatID, &rsv.UserName, &rsv.CreatedAt, &rsv.ExpiresAt)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -223,6 +225,8 @@ func (s *server) cancelReservation(w http.ResponseWriter, r *http.Request) {
 }
 
 const maxIdempotencyKeyLen = 255
+
+const reservationTTL = 15 * time.Minute
 
 func requestHash(req createReservationRequest) string {
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%d:%s", req.SeatID, req.UserName)))
