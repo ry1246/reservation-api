@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -26,6 +27,8 @@ func main() {
 	defer pool.Close()
 
 	s := &server{pool: pool}
+
+	go s.runExpirer(ctx, 30*time.Second)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler)
