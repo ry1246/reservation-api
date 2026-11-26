@@ -49,7 +49,7 @@
 ## Phase 3: 仕上げ
 
 - [x] 予約の有効期限（仮押さえ）と期限切れの解放（goroutine / ticker で実装）
-- [ ] 並行処理のテスト（`go test -race`）
+- [x] 並行処理のテスト（`go test -race`）
 - [ ] README に、再現手順と各対策の比較結果をまとめる
   - 対策前の再現結果（2026-11-09 実測）
     - 条件: k6 で 50 VU が同じ座席 `seat_id = 1` に 1 回ずつ同時に `POST /reservations`（`loadtest/reserve.js`）
